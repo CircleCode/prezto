@@ -3,7 +3,8 @@
 #
 # Authors:
 #   Sorin Ionescu <sorin.ionescu@gmail.com>
-#
+
+fpath=(~/.zsh/completions $fpath)
 
 # Source Prezto.
 if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
@@ -12,3 +13,15 @@ fi
 
 # Customize to your needs...
 
+# key bindings
+bindkey '^[OH' beginning-of-line
+bindkey '^[OF' end-of-line
+bindkey '^[[3~' delete-char
+bindkey '^[[2~' overwrite-mode
+bindkey '^[[1;5C' forward-word
+bindkey '^[[1;5D' backward-word
+
+# Load our aliases and functions
+if [ -e ~/.shell_aliases ]; then
+    source ~/.shell_aliases
+fi
