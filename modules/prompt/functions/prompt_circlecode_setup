@@ -1,0 +1,265 @@
+#
+# my custom prompt
+#
+# Authors:
+#   Matthieu Codron
+#
+# Freely inspired from
+#   Alex Reece (https://github.com/awreece/prezto/blob/theme/modules/last_command/init.zsh)
+#   Jeff Sandberg (https://github.com/paradox460/prezto/blob/paradox/modules/prompt/functions/prompt_paradox_setup)
+#   Julien Bianchi (https://github.com/jubianchi/dotfiles/blob/master/.oh-my-zsh/themes/jubianchi.zsh-theme)
+
+# Load dependencies.
+pmodload 'helper'
+
+CURRENT_BG='NONE'
+CURRENT_RBG='NONE'
+
+
+# Begin a segment
+# Takes two arguments, background and foreground. Both can be omitted,
+# rendering default background/foreground.
+prompt_segment() {
+  local bg fg
+
+  [[ -n $1 ]] && bg="%K{$1}" || bg="%k"
+  [[ -n $2 ]] && fg="%F{$2}" || fg="%f"
+
+  if [[ $CURRENT_BG != 'NONE' && $1 != $CURRENT_BG ]]; then
+    echo -n " %{$bg%F{$CURRENT_BG}%}$SEGMENT_SEPARATOR%{$fg%} "
+  else
+    echo -n "%{$bg%}%{$fg%} "
+  fi
+
+  CURRENT_BG=$1
+
+  [[ -n $3 ]] && print -Pn $3
+}
+
+prompt_rsegment() {
+  local bg fg
+
+  [[ -n $1 ]] && bg="%K{$1}" || bg="%k"
+  [[ -n $2 ]] && fg="%F{$2}" || fg="%f"
+
+  if [[ $CURRENT_RBG == 'NONE' ]]
+  then
+    echo -n "%{%F{$1}%}$RSEGMENT_SEPARATOR%{$fg$bg%} "
+  else
+    echo -n "$RSEGMENT_SEPARATOR"
+  fi
+
+  CURRENT_BG=$1
+
+  [[ -n $3 ]] && print -Pn $3
+}
+
+# End the prompt, closing any open segments
+prompt_end() {
+  if [[ -n $CURRENT_BG ]]; then
+    echo -n " %{%k%F{$CURRENT_BG}%}$SEGMENT_SEPARATOR"
+  else
+    echo -n "%{%k%}"
+  fi
+  echo -n "%{%f%}"
+  CURRENT_BG=''
+}
+
+build_prompt() {
+  RETVAL=$?
+
+  foreach plugin ($LEFT_PROMPT) prompt_$plugin 'prompt_segment'; end;
+
+  prompt_end
+}
+
+# build_cmd_prompt() {
+#   local bgcolor fgcolor symbol
+#   #CURRENT_BG='NONE'
+#   #prompt_segment black default "$ %{%k%F{black}%}$SEGMENT_SEPARATOR"
+#   #print -nP '%{%F{default}%K{black}%}$%{%k%F{black}%}$SEGMENT_SEPARATOR'
+#   if [ "$UID" = "0" ]; then
+#     bgcolor="yellow"
+#     fgcolor="black"
+#     symbol=$PROMPT_ROOT_SYMBOL
+#   else
+#     bgcolor="black"
+#     fgcolor="default"
+#     symbol=$PROMPT_USER_SYMBOL
+#   fi
+#   print -n "%{%F{$fgcolor}%K{$bgcolor}%}$symbol%{%k%F{$bgcolor}%}$SEGMENT_SEPARATOR"
+# }
+
+build_cmd_prompt() {
+  RETVAL=$?
+
+  foreach plugin ($CMD_PROMPT) prompt_$plugin 'prompt_segment'; end;
+
+  prompt_end
+}
+
+build_rprompt() {
+  foreach plugin ($RIGHT_PROMPT) prompt_$plugin 'prompt_rsegment'; end;
+}
+
+prompt_invite() {
+  local bgcolor fgcolor symbol
+  if [ "$UID" = "0" ]; then
+    $1 yellow black "$PROMPT_ROOT_SYMBOL"
+  else
+    $1 black default "$PROMPT_USER_SYMBOL"
+  fi
+}
+
+prompt_status() {
+  local symbols nbjobs
+
+  symbols=()
+  [[ $RETVAL -ne 0 ]] && symbols+="%{%F{red}%}$STATUS_ERROR_SYMBOL($RETVAL)"
+  nbjobs=$(jobs -l | wc -l)
+  [[ $nbjobs -gt 0 ]] && symbols+="%{%F{cyan}%}$nbjobs$STATUS_BACKGROUND_SYMBOL"
+
+  [[ -n "$symbols" ]] && $1 black default "$symbols"
+}
+
+prompt_date() {
+  $1 blue white $DATE_FORMAT
+}
+
+prompt_git_all() {
+  if $git_status; then
+    $1 green black '${(e)git_info[prompt]}${git_info[status]}'
+  fi
+}
+
+prompt_git_details() {
+  if $git_status; then
+    $1 green black '${(e)git_info[prompt]}'
+  fi
+}
+
+prompt_git_symbols() {
+  if $git_status; then
+    if [ "${git_info[status]// /}" != "" ]; then
+      $1 yellow black '${git_info[status]}'
+    fi
+  fi
+}
+
+prompt_dir() {
+  #$1 blue black '%~'
+  local rawPath strippedPath
+
+  rawPath=$(print -P '%4(~:…/:)%3~') #see http://www.acm.uiuc.edu/workshops/zsh/prompt/conditionals.html
+  foreach segment (${(s:/:)rawPath}) segment=$segment[1,3]$(print -P "%12<…<${segment[4,-1]}"); strippedPath="${strippedPath}${segment}/"; end;
+  $1 blue black $strippedPath[1,-2]
+}
+
+start_time='invalid'
+function prompt_circlecode_preexec {
+  start_time=$SECONDS
+}
+
+function prompt_circlecode_precmd {
+  local timer_result
+
+  setopt LOCAL_OPTIONS
+  unsetopt XTRACE KSH_ARRAYS
+
+  # Get Git repository information.
+  if (( $+functions[git-info] )); then
+    git_status=git-info
+  fi
+
+  # We do these 'invalid' shenanigans because zsh executes precmd but not
+  # preexec if an empty line is entered.
+  # see https://github.com/awreece/prezto/blob/theme/modules/last_command/init.zsh
+  if [[ $start_time != 'invalid' ]]; then
+    timer_result=$(($SECONDS-$start_time))
+    if [[ $timer_result -gt $MIN_DISPLAY_DURATION ]]; then
+      calc_elapsed_time
+    fi
+    start_time='invalid'
+  fi
+}
+
+function calc_elapsed_time {
+  local timer_hours timer_minutes timer_seconds remainder
+
+  if [[ $timer_result -ge 3600 ]]; then
+    let "timer_hours = $timer_result / 3600"
+    let "remainder = $timer_result % 3600"
+    let "timer_minutes = $remainder / 60"
+    let "timer_seconds = $remainder % 60"
+    print -P "%B%F{red}>>> elapsed time ${timer_hours}h${timer_minutes}m${timer_seconds}s%b"
+  elif [[ $timer_result -ge 60 ]]; then
+    let "timer_minutes = $timer_result / 60"
+    let "timer_seconds = $timer_result % 60"
+    print -P "%B%F{yellow}>>> elapsed time ${timer_minutes}m${timer_seconds}s%b"
+  elif [[ $timer_result -gt $MIN_DISPLAY_DURATION ]]; then
+    print -P "%B%F{green}>>> elapsed time ${timer_result}s%b"
+  fi
+}
+
+function prompt_circlecode_setup {
+  setopt LOCAL_OPTIONS
+  unsetopt XTRACE KSH_ARRAYS
+  prompt_opts=(cr percent subst)
+
+  # Load required functions.
+  autoload -Uz add-zsh-hook
+
+  # Add hook for calling git-info before each command.
+  add-zsh-hook preexec prompt_circlecode_preexec
+  add-zsh-hook precmd prompt_circlecode_precmd
+
+  zstyle ':prezto:module:editor:info:completing' format '%B%F{red}…%f%b'
+  zstyle ':prezto:module:editor:info:keymap:primary' format '%B%F{blue}❯%f%b'
+  zstyle ':prezto:module:editor:info:keymap:primary:overwrite' format '%F{red}♺%f'
+  zstyle ':prezto:module:editor:info:keymap:alternate' format '%B%F{red}❮%f%b'
+
+  zstyle ':prezto:module:git:info' verbose 'yes'
+
+  zstyle ':prezto:module:git:info:action' format ' ! %s'
+  zstyle ':prezto:module:git:info:added' format '✚'
+  zstyle ':prezto:module:git:info:ahead' format '⬆'
+  zstyle ':prezto:module:git:info:behind' format '⬇'
+  zstyle ':prezto:module:git:info:branch' format '⭠ %b'
+  zstyle ':prezto:module:git:info:commit' format '➦%.7c'
+  zstyle ':prezto:module:git:info:deleted' format '✖'
+  zstyle ':prezto:module:git:info:modified' format '✱'
+  zstyle ':prezto:module:git:info:position' format '%p'
+  zstyle ':prezto:module:git:info:renamed' format '➙'
+  #zstyle ':prezto:module:git:info:stashed' format '%B%S⚠%{[21m%}'
+  zstyle ':prezto:module:git:info:stashed' format '✪%Sstashes '
+  zstyle ':prezto:module:git:info:unmerged' format '═'
+  zstyle ':prezto:module:git:info:untracked' format '?'
+  zstyle ':prezto:module:git:info:keys' format \
+    'prompt' '%c$(coalesce "%b" "%p")%s' \
+    'status' ' %S%A%B%a%d%m%r%U%u'
+
+  # Define prompts.
+  PROMPT='
+%{%f%b%k%}$(build_prompt)
+$(build_cmd_prompt)%{%f%k%b%}'
+  RPROMPT='%{%f%b%k%}$(build_rprompt)'
+  SPROMPT='zsh: correct %F{red}%R%f to %F{green}%r%f [nyae]? '
+}
+
+[ -z "$SEGMENT_SEPARATOR" ] && SEGMENT_SEPARATOR='⮀'
+[ -z "$RSEGMENT_SEPARATOR" ] && RSEGMENT_SEPARATOR='⮂'
+
+[ -z "$STATUS_ERROR_SYMBOL" ] && STATUS_ERROR_SYMBOL='✘'
+[ -z "$STATUS_BACKGROUND_SYMBOL" ] && STATUS_BACKGROUND_SYMBOL='⚙'
+[ -z "$PROMPT_USER_SYMBOL" ] && PROMPT_USER_SYMBOL='%%%%' # double percent escape required
+[ -z "$PROMPT_ROOT_SYMBOL" ] && PROMPT_ROOT_SYMBOL='#'
+
+[ -z "$DATE_FORMAT" ] && DATE_FORMAT="%*"
+
+[ -z "$MIN_DISPLAY_DURATION" ] && MIN_DISPLAY_DURATION=10
+
+[ -z "$LEFT_PROMPT" ] && LEFT_PROMPT=(status dir git_details)
+[ -z "$RIGHT_PROMPT" ] && RIGHT_PROMPT=(git_symbols date)
+[ -z "$CMD_PROMPT" ] && CMD_PROMPT=(invite)
+
+prompt_circlecode_setup "$@"
